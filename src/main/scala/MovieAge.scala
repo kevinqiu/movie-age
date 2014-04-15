@@ -14,6 +14,7 @@ object MovieAge {
 		getCurrentMovies.map(getMovieAvg(_))
 	}
 
+	//wrapper to send query to freebase
 	def constructFreebaseQuery(query: String) : dispatch.Req = {
 		val freebase = host("www.googleapis.com").secure / "freebase" / "v1" / "mqlread"
 		freebase <<? Map("query" -> query) <<? Map("key" -> apiKey)
@@ -25,6 +26,7 @@ object MovieAge {
 		io.Source.fromFile("movies.txt").getLines.toList
 	}
 
+	//compositional function that has side effect of printing age out
 	def getMovieAvg(mId: String) = {
 		getMovieJson(mId).map(json => 
 			json.fold(
@@ -47,6 +49,7 @@ object MovieAge {
 		sum/ageList.length
 	}
 
+	//retrieves the movie data from freebase
 	def getMovieJson(mId: String) : Future[\/[String, Json]] = {
 		val query = """{
 		  "type": "/film/film",
@@ -72,6 +75,7 @@ object MovieAge {
 		retJson
 	}
 
+	//parse json to retrieve list of actors
 	def getActors(json: Json) : Option[JsonArray] = {
 		val actorLens = jObjectPL >=> 
 		jsonObjectPL("result") >=> 
@@ -82,6 +86,7 @@ object MovieAge {
 		actorLens.get(json)
 	}
 
+	//parse json to retrieve dob from actor json
 	def getDob(json: Json) : Option[String] = {
 		val ageLens = jObjectPL >=>
 		jsonObjectPL("actor") >=>
@@ -92,6 +97,7 @@ object MovieAge {
 		ageLens.get(json)
 	}
 
+	//parse json to retrieve name from movie json
 	def getMovieName(json : Json) : Option[String] = {
 		val movieNameLens = jObjectPL >=> 
 		jsonObjectPL("result") >=> 
