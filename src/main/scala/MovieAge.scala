@@ -1,8 +1,8 @@
 import dispatch._
 import Defaults._
 import argonaut._, Argonaut._
-import scalaz.ValidationNel
 import scalaz.\/
+import scalaz.std.option._
 import scalaz.syntax.validation._ 
 
 object MovieAge {
@@ -12,7 +12,6 @@ object MovieAge {
 
 	def main(args: Array[String]) {
 		getCurrentMovies.map(getMovieAvg(_))
-		getCurrentMovies.map(println(_))
 	}
 
 	def constructFreebaseQuery(query: String) : dispatch.Req = {
@@ -27,12 +26,24 @@ object MovieAge {
 	}
 
 	def getMovieAvg(mId: String) = {
-		getMovieJson(mId).map(x => x.map(y => getAvgAge(getActorAges(y))))
+		getMovieJson(mId).map(json => 
+			json.fold(
+				error => {
+					println("Unable to retrieve json")
+					},
+					data => {
+						val movie = getMovieName(data).get
+						getActors(data).map(
+							actors => {
+								val avg = getAvgAge(actors.map(actor => getDob(actor).map(
+									dob => calculateAge(dob))).flatten)
+								println("Average age of actors in " + movie + " is: " + avg)
+								}).getOrElse(println("actors for" + movie + "could not be found"))
+					}))	
 	}
 
 	def getAvgAge(ageList: List[Int]) : Int = {
 		val sum = ageList.fold(0) { (a,b) => a+b}
-		println("Avg Age:" + sum/ageList.length)
 		sum/ageList.length
 	}
 
@@ -53,37 +64,42 @@ object MovieAge {
 		val request = constructFreebaseQuery(query)
 		val res = for (exc <- Http(request OK as.String).either.left) 
 			yield ("Can't connect to freebase: " + exc.getMessage)
+		//convert to scalaz either so flatmap can be used with argonaut 
+		//parser which also uses scalaz \/
 		val resEither = res.map(\/.fromEither(_))
 		val retJson = resEither.map(x => x.flatMap(y => Parse.parse(y)))
 		
 		retJson
 	}
 
-	def getActorAges(json: Json) : List[Int] = {
+	def getActors(json: Json) : Option[JsonArray] = {
 		val actorLens = jObjectPL >=> 
 		jsonObjectPL("result") >=> 
 		jObjectPL >=>
 		jsonObjectPL("starring") >=>
 		jArrayPL
 
+		actorLens.get(json)
+	}
+
+	def getDob(json: Json) : Option[String] = {
 		val ageLens = jObjectPL >=>
 		jsonObjectPL("actor") >=>
 		jObjectPL >=>
 		jsonObjectPL("date_of_birth") >=>
 		jStringPL
 
+		ageLens.get(json)
+	}
+
+	def getMovieName(json : Json) : Option[String] = {
 		val movieNameLens = jObjectPL >=> 
 		jsonObjectPL("result") >=> 
 		jObjectPL >=>
 		jsonObjectPL("name") >=>
 		jStringPL
 
-		val dobList = actorLens.get(json).get.map(x=>ageLens.get(x))
-		//hacky way to id movie
-		println("Movie: " + movieNameLens.get(json))
-
-		dobList.map(x => calculateAge(x.get))
-
+		movieNameLens.get(json)
 	}
 
 	//hacky function to determine age
